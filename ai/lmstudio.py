@@ -6,6 +6,8 @@
 LM Studio: Settings → Developer → Local Server → Start Server
 По умолчанию слушает http://localhost:1234/v1
 """
+import os
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
@@ -19,6 +21,7 @@ logger = get_logger(__name__)
 class LMStudioProvider(AIProvider):
     def __init__(self, model: str | None = None):
         self.model = model or settings.lmstudio_model
+        self.api_token = os.getenv("LMSTUDIO_TOKEN", "")
         self.host = settings.lmstudio_host.rstrip("/")
         self.timeout = settings.ollama_timeout_seconds  # общий таймаут для локальных LLM
 
@@ -36,12 +39,35 @@ class LMStudioProvider(AIProvider):
             ],
             "temperature": 0.1,
             "stream": False,
-            # LM Studio (как и OpenAI API) поддерживает принудительный JSON-режим
-            "response_format": {"type": "json_object"},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response_schema",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": True
+                    }
+                }
+            }
         }
+
+        # 👇 Отладка
+        logger.info(f"LM Studio request to {self.host}, model: {self.model}")
+        logger.info(f"Token present: {'YES' if self.api_token else 'NO'} (length: {len(self.api_token)})")
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                resp = await client.post(f"{self.host}/chat/completions", json=payload)
+                resp = await client.post(
+                    f"{self.host}/chat/completions",
+                    json=payload,
+                    headers=headers
+                )
                 resp.raise_for_status()
             except httpx.ConnectError:
                 logger.error(
@@ -52,8 +78,6 @@ class LMStudioProvider(AIProvider):
                 )
                 raise
             except httpx.HTTPStatusError as e:
-                # Некоторые модели/версии LM Studio не поддерживают response_format —
-                # логируем тело ответа, чтобы было видно причину в логах.
                 logger.error("LM Studio вернул ошибку %s: %s", e.response.status_code, e.response.text)
                 raise
 

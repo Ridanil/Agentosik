@@ -60,7 +60,7 @@ async def collect_source_history(source, limit_per_run: int = 500) -> int:
     try:
         # min_id гарантирует, что мы не тянем повторно уже собранные сообщения
         async for tg_msg in client.iter_messages(
-            source.username, min_id=source.last_message_id, limit=limit_per_run, reverse=True
+            source.username, min_id=source.last_message_id, limit=limit_per_run, reverse=False
         ):
             saved = await _persist_message(source.id, source.username, tg_msg)
             if saved:

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     database_path: str = "./data/agent.db"
 
     # AI backend: "ollama" или "lmstudio"
-    ai_backend: str = "ollama"
+    ai_backend: str = "lmstudio"
 
     # Ollama
     ollama_host: str = "http://localhost:11434"
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     lmstudio_host: str = "http://localhost:1234/v1"
     lmstudio_model: str = "qwen3-8b"
 
-    max_messages_per_ai_batch: int = 40
+    max_messages_per_ai_batch: int = 10
 
     # Logging
     log_level: str = "INFO"

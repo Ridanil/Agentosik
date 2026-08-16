@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Source(BaseModel):
@@ -74,7 +74,8 @@ class ResultRecord(BaseModel):
     relevance: float
     quote: str
     explanation: str
-    created_at: str
+    created_at: datetime = Field(default_factory=datetime.now)
+
 
 
 def now_iso() -> str:

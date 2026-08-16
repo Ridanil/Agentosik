@@ -3,6 +3,8 @@
 Ссылка на сообщение берётся ИСКЛЮЧИТЕЛЬНО из данных, собранных Telethon
 (message.message_url), а не генерируется моделью.
 """
+from datetime import datetime
+
 from ai.schemas import AnalysisResult
 from database import repository
 from database.models import Message, ResultRecord
@@ -22,6 +24,7 @@ async def save_results(
             relevance=analysis.relevance_score,
             quote=analysis.quote,
             explanation=analysis.explanation,
+            created_at=datetime.now(),
         )
         await repository.save_result(record)
         saved.append(

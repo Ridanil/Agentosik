@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS sources (
 
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id INTEGER NOT NULL REFERENCES sources(id),
+    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     telegram_message_id INTEGER NOT NULL,
     message_date TEXT,
     author TEXT,
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS searches (
 
 CREATE TABLE IF NOT EXISTS results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    search_id INTEGER NOT NULL REFERENCES searches(id),
-    message_id INTEGER NOT NULL REFERENCES messages(id),
+    search_id INTEGER NOT NULL REFERENCES searches(id) ON DELETE CASCADE,
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     relevance REAL,
     quote TEXT,
     explanation TEXT,
