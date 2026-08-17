@@ -36,6 +36,7 @@ async def save_results(
                 "explanation": analysis.explanation,
                 "relevance_score": analysis.relevance_score,
                 "confidence": analysis.confidence,
+                "classification": analysis.classification,  # добавляем классификацию
             }
         )
     logger.info("Сохранено результатов: %d (search_id=%s)", len(saved), search_id)

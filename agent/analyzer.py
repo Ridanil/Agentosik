@@ -46,7 +46,7 @@ async def analyze_message(
             result = AnalysisResult(**data)
 
             # Дополнительная защита: если модель не нашла формулировку,
-            # но при этом заявила relevant=true с несуществующей цитатой — не доверяем.
+            # но при этом заявила EXACT_MATCH или POSSIBLE_MATCH с несуществующей цитатой — не доверяем.
             if result.quote != "точная формулировка отсутствует" and result.quote not in (message.text or ""):
                 logger.warning(
                     "Цитата от AI не найдена дословно в исходном тексте (message_id=%s). "
@@ -80,6 +80,7 @@ async def analyze_batch(
     for msg in batch:
         label = channel_labels.get(msg.source_id, "неизвестный канал")
         analysis = await analyze_message(ai, task, msg, label)
-        if analysis and analysis.relevant:
+        # Сохраняем EXACT_MATCH и POSSIBLE_MATCH, исключаем только NOT_RELEVANT
+        if analysis and analysis.classification in ("EXACT_MATCH", "POSSIBLE_MATCH"):
             results.append((msg, analysis))
     return results

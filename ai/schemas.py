@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class AnalysisResult(BaseModel):
-    relevant: bool
+    classification: Literal["EXACT_MATCH", "POSSIBLE_MATCH", "NOT_RELEVANT"]
     relevance_score: float = Field(ge=0.0, le=1.0)
     quote: str
     explanation: str
