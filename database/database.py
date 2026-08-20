@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS results (
     explanation TEXT,
     created_at TEXT NOT NULL
 );
+
+-- RAG (п.6, п.22 ТЗ): эмбеддинги сообщений для семантического (векторного) поиска.
+-- Один эмбеддинг на сообщение, пересчитывается при смене модели (ON CONFLICT в repository.py).
+CREATE TABLE IF NOT EXISTS message_embeddings (
+    message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    model_name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 

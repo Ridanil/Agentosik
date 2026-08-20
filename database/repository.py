@@ -161,6 +161,95 @@ async def get_source_by_username(username: str) -> Optional[Source]:
         await conn.close()
 
 
+async def get_messages_by_ids(message_ids: list[int]) -> list[Message]:
+    """Возвращает сообщения по списку id, сохраняя порядок message_ids
+    (важно для векторного поиска: порядок = убывание релевантности)."""
+    if not message_ids:
+        return []
+    conn = await get_connection()
+    try:
+        placeholders = ",".join("?" * len(message_ids))
+        cur = await conn.execute(
+            f"SELECT * FROM messages WHERE id IN ({placeholders})", message_ids
+        )
+        rows = await cur.fetchall()
+        by_id = {row["id"]: Message.from_row(row) for row in rows}
+        return [by_id[mid] for mid in message_ids if mid in by_id]
+    finally:
+        await conn.close()
+
+
+# ---------- embeddings (RAG / семантический поиск, п.6 п.22 ТЗ) ----------
+
+async def save_embedding(message_id: int, embedding: bytes, model_name: str) -> None:
+    conn = await get_connection()
+    try:
+        await conn.execute(
+            """INSERT INTO message_embeddings (message_id, embedding, model_name, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(message_id) DO UPDATE SET
+                   embedding = excluded.embedding,
+                   model_name = excluded.model_name,
+                   created_at = excluded.created_at""",
+            (message_id, embedding, model_name, now_iso()),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+
+async def get_messages_without_embeddings(limit: int = 500) -> list[Message]:
+    """Сообщения, для которых ещё не посчитан эмбеддинг — для батч-обработки
+    после сбора (и для докатки после перезапуска, если процесс прервался)."""
+    conn = await get_connection()
+    try:
+        cur = await conn.execute(
+            """SELECT m.* FROM messages m
+               LEFT JOIN message_embeddings e ON e.message_id = m.id
+               WHERE e.message_id IS NULL
+               ORDER BY m.id ASC LIMIT ?""",
+            (limit,),
+        )
+        rows = await cur.fetchall()
+        return [Message.from_row(r) for r in rows]
+    finally:
+        await conn.close()
+
+
+async def get_embeddings_for_search(
+    source_ids: Optional[list[int]] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> list[tuple[int, bytes]]:
+    """(message_id, embedding_blob) с теми же фильтрами, что и лексический поиск.
+    Векторное сравнение (cosine) делается уже в Python-слое (agent/semantic_search.py) —
+    для больших объёмов позже можно заменить на sqlite-vec/FAISS без изменения
+    интерфейса этой функции наружу."""
+    conn = await get_connection()
+    try:
+        conditions = []
+        params: list = []
+        if source_ids:
+            placeholders = ",".join("?" * len(source_ids))
+            conditions.append(f"m.source_id IN ({placeholders})")
+            params.extend(source_ids)
+        if date_from:
+            conditions.append("m.message_date >= ?")
+            params.append(date_from)
+        if date_to:
+            conditions.append("m.message_date <= ?")
+            params.append(date_to)
+
+        where = " AND ".join(conditions) if conditions else "1=1"
+        query = f"""SELECT e.message_id, e.embedding FROM message_embeddings e
+                    JOIN messages m ON m.id = e.message_id WHERE {where}"""
+        cur = await conn.execute(query, params)
+        rows = await cur.fetchall()
+        return [(r["message_id"], r["embedding"]) for r in rows]
+    finally:
+        await conn.close()
+
+
 # ---------- searches / results ----------
 
 async def create_search(query: str, date_from: Optional[str], date_to: Optional[str]) -> int:
