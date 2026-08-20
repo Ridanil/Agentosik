@@ -3,11 +3,13 @@
 - Не создаёт дубликаты: UNIQUE(source_id, telegram_message_id) в БД + запоминание last_message_id.
 - Корректно восстанавливается после перезапуска: продолжает с last_message_id.
 - Уважает FloodWait от Telegram (не обходит ограничения, просто ждёт).
+- После сбора считает эмбеддинги для новых сообщений — retrieval-часть RAG (п.6 ТЗ).
 """
 import asyncio
 
 from telethon.errors import FloodWaitError
 
+from agent.embeddings import EMBEDDING_MODEL_NAME, embed_texts, vector_to_blob
 from collector.telegram_client import get_client
 from database import repository
 from database.models import Message, now_iso
@@ -83,8 +85,31 @@ async def collect_source_history(source, limit_per_run: int = 500) -> int:
     return new_count
 
 
+async def embed_pending_messages(batch_size: int = 100) -> int:
+    """Считает эмбеддинги для сообщений, у которых их ещё нет — RAG retrieval-индекс
+    (п.6, п.22 ТЗ). Батчируется по той же причине, что и AI-анализ (п.11 ТЗ):
+    не перегружать локальную модель. Идемпотентна: безопасно перезапускать,
+    в том числе после сбоя процесса — просто продолжит с необработанных сообщений."""
+    total = 0
+    while True:
+        pending = await repository.get_messages_without_embeddings(limit=batch_size)
+        if not pending:
+            break
+        texts = [msg.text or "" for msg in pending]
+        vectors = await embed_texts(texts)
+        for msg, vec in zip(pending, vectors):
+            await repository.save_embedding(msg.id, vector_to_blob(vec), EMBEDDING_MODEL_NAME)
+        total += len(pending)
+
+    if total:
+        logger.info("Посчитаны эмбеддинги для %d новых сообщений", total)
+    return total
+
+
 async def collect_all_enabled_sources() -> dict:
-    """Проходит по всем включённым каналам и собирает новые сообщения."""
+    """Проходит по всем включённым каналам, собирает новые сообщения,
+    затем досчитывает эмбеддинги для всего нового за один проход (эффективнее,
+    чем пересчитывать по каждому каналу отдельно)."""
     sources = await repository.list_sources(enabled_only=True)
     summary = {}
     for source in sources:
@@ -94,6 +119,12 @@ async def collect_all_enabled_sources() -> dict:
         except Exception:
             logger.exception("Ошибка сбора для канала @%s", source.username)
             summary[source.username] = "error"
+
+    try:
+        await embed_pending_messages()
+    except Exception:
+        logger.exception("Ошибка при подсчёте эмбеддингов")
+
     return summary
 
 
